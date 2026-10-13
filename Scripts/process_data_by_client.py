@@ -260,7 +260,7 @@ def read_csv(path: Path, usecols: list[str]) -> pd.DataFrame:
     """Lee el csv, y reduce el tamaño de las variables cuando es
         posible para ahorrar memoria."""
 
-    df = pd.read_csv(path, usecols=usecols)
+    df = pd.read_csv(path, usecols=usecols, dtype={c: str for c in usecols if c in TEXT_COLS})
     for col in df.select_dtypes(include="float64").columns:
         df[col] = df[col].astype("float32")
     for col in df.select_dtypes(include="int64").columns:
@@ -735,8 +735,8 @@ def process_client(args: tuple) -> tuple[int, int, list[str]]:
     x = build_client(cdir).set_index(ID)
     split = pd.read_csv(cdir / "split.csv").set_index(ID)
     feat_cols = [c for c in FEATURE_COLUMNS if c not in (ID, TARGET)]
-    x[feat_cols] = x[feat_cols].astype("float32")
-    out = pd.concat([x[[TARGET]], split.loc[x.index, ["global_split", "local_split"]], x[feat_cols]], axis=1).reset_index()
+    x = x.astype({c: "float32" for c in feat_cols})
+    out = pd.concat([x[[TARGET]], split.loc[x.index, ["global_split", "local_split"]], x[feat_cols]], axis=1).copy().reset_index()
     out.to_parquet(out_file, index=False)
     return j, len(out), len(feat_cols)
 
@@ -762,7 +762,7 @@ def main():
         t0 = time.time()
         out_dir = out_root / f"K{K}" / d.name
         out_dir.mkdir(parents=True, exist_ok=True)
-        jobs = [(j, cd, out_dir / f"client_{j:0d}.parquet") for j, cd in enumerate(sorted(p for p in d.glob("client_*") if p.is_dir()))]
+        jobs = [(j, cd, out_dir / f"client_{j:02d}.parquet") for j, cd in enumerate(sorted(p for p in d.glob("client_*") if p.is_dir()))]
         if N_WORKERS > 1:
             with ProcessPoolExecutor(max_workers=N_WORKERS) as pool:
                 res = list(pool.map(process_client, jobs))
