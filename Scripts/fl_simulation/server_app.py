@@ -42,13 +42,13 @@ class WoeServer:
         return 0
 
     def payload(self, K:int) -> list[np.ndarray]:
-        return [self.coef, self.tab["sel", self.tab["c2b"], self.tab["woe"]]]
+        return [self.coef, self.tab["sel"], self.tab["c2b"], self.tab["woe"]]
 
     def absorb(self, KS:list[int], replies:dict, n: np.ndarray) -> list[np.ndarray]:
         d = [replies[K].content["arrays"].to_numpy_ndarrays()[0] for K in KS]
         w = n[KS] / n[KS].sum()
 
-        self.coef = self.coef + sum(wi * di for wi, di, in zip(w, d)).astype(np.int32)
+        self.coef = self.coef + sum(wi * di for wi, di, in zip(w, d)).astype(np.float32)
 
         for K in KS:
             if "counts" in replies[K].content:
@@ -63,7 +63,7 @@ class WoeServer:
         self.sets[name] = x
 
     def margin(self, name:str) -> np.ndarray:
-        return woe_features(self.sets[name], self.tab) @ self.coef[:1] + self.coef[-1]
+        return woe_features(self.sets[name], self.tab) @ self.coef[:-1] + self.coef[-1]
 
     
 class TreeServer:
@@ -111,7 +111,7 @@ class TreeServer:
             self.weights.append(float(wi))
 
             for nm, x, in self.sets.items():
-                self.margin[nm] += wi * predict_block(self.lib, blob, x)
+                self.margins[nm] += wi * predict_block(self.lib, blob, x)
 
             imp = gain_importance(self.lib, blob, self.d)
             vecs.append(imp / imp.sum() if imp.sum > 0 else imp)
@@ -138,7 +138,7 @@ def central_baseline(model: str, config: dict, xtest:np.ndarray, ytest: np.ndarr
     pid = f"K{int(config['K'])}_{Path(config['part-dir']).name}"
     if f.exists():
         df = pd.read_csv(f)
-        if (df["modelo"] == model & df["particion"] == pid).any():
+        if ((df["modelo"] == model) & (df["particion"] == pid)).any():
             return float(df.loc[df["modelo"] == model & df["particion"] == pid, "auc"].iloc[0])
 
     xtr, ytr = load_pooled(config["part-dir"], "local_split", "train")
@@ -151,7 +151,7 @@ def central_baseline(model: str, config: dict, xtest:np.ndarray, ytest: np.ndarr
         
         C = float(params.get("woe_logreg", {}).get("C", 1.0))
         lr = LogisticRegression(C=C, solver="lbfgs", max_iter=1000).fit(woe_features(xtr, tab)[:, sel], ytr)
-        margin = lr.decision_function(woe_features(xtr, tab)[:, sel])
+        margin = lr.decision_function(woe_features(xtest, tab)[:, sel])
 
     elif model == "xgboost":
         import xgboost as xgb
@@ -161,11 +161,11 @@ def central_baseline(model: str, config: dict, xtest:np.ndarray, ytest: np.ndarr
             learning_rate=0.03,
             max_depth = 5,
             min_child_weight = 10,
-            subsamble=0.8,
+            subsample=0.8,
             colsample_bytree=0.5,
             reg_alpha=0.1,
             reg_lambda=1.0,
-            tree_metho="hist",
+            tree_method="hist",
             n_jobs=-1,
             random_state = 42,
             n_estimators = int(params.get("xgboost", {}).get("n_estimators", 300)),
@@ -190,7 +190,7 @@ def central_baseline(model: str, config: dict, xtest:np.ndarray, ytest: np.ndarr
             n_jobs=-1,
             random_state = 42,
             verbose= -1,
-            n_estimators = int(params.get("xgboost", {}).get("n_estimators", 300)),
+            n_estimators = int(params.get("lightgbm", {}).get("n_estimators", 300)),
         )
 
         clf.fit(xtr, ytr)
@@ -212,7 +212,7 @@ def query_nodes(grid: Grid, config: dict, system: str) -> list[dict]:
     """
 
     node_ids = list(grid.get_node_ids())
-    content = RecordDict({"config": ConfigRecord({"part-dir": config["part-dir"], "system": system, "seed": int[config["seed"]]})})
+    content = RecordDict({"config": ConfigRecord({"part-dir": config["part-dir"], "system": system, "seed": int(config["seed"])})})
     msgs = [Message(content=content, dst_node_id=id, message_type=MessageType.QUERY, group_id="Query") for id in node_ids]
     out = []
 
@@ -229,7 +229,7 @@ def query_nodes(grid: Grid, config: dict, system: str) -> list[dict]:
 def make_server_model(model: str, d: int, sets: dict) -> WoeServer | TreeServer:
     srv = WoeServer(d) if model == "woe_logreg" else TreeServer(model, d)
     
-    for name, x in sets.tems():
+    for name, x in sets.items():
         srv.bind(name, x)
 
     return srv
@@ -271,7 +271,7 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
         elif strategy == "greedy":
             selected = select_greedy(cm.values(t), prices, B)
         else:
-            select_lp(cm.vaues(t), prices, B)
+            selected = select_lp(cm.values(t), prices, B)
 
         msgs = []
         for k in selected:
@@ -281,7 +281,7 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
                 "seed": seed,
                 "system": system,
                 "part-dir": config["part-dir"],
-                "need_woe": srv.need_woe(k),
+                "need-woe": srv.need_woe(k),
                 "no-drop": int(strategy == "all"),
                 "start": srv.start(k),
                 "exp-id": f"{system}|{strategy}|{budget_frac}|{fixed_share}",
@@ -300,22 +300,22 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
                 replies[node2k[r.metadata.src_node_id]] = r
 
         responded = sorted(replies)
-        cm.observe_sttempts(selected, responded)
+        cm.observe_attempts(selected, responded)
 
         if responded:
             vecs = srv.absorb(responded, replies, n)
             if len(responded) >= 2:
                 tot = sum(n[k] * v for k, v in zip(responded, vecs))
                 for k, v in zip(responded, vecs):
-                    cm.observe_quality(k, (1.0 + cosine(v, tot - n[k] + v)) / 2.0)
+                    cm.observe_quality(k, (1.0 + cosine(v, tot - n[k] * v)) / 2.0)
 
         metrics = score_metrics(ytest, srv.margin("test"))
         metrics_va = score_metrics(yva, srv.margin("va"))
 
-        rows.appennd({"ronda": t,
+        rows.append({"ronda": t,
                     **metrics,
                     "auc_valid": metrics_va["roc_auc"],
-                    "loglos_va": metrics_va["logloss"],
+                    "loglos_valid": metrics_va["logloss"],
                     "gasto": float(prices[selected].sum()) if strategy != "all" else float(len(selected)),
                     "presupuesto": float(B),
                     "n_seleccionados": len(selected),
@@ -364,7 +364,7 @@ def main(grid: Grid, context:Context) -> None:
             config[key] = abs_path(config[key]).as_posix()
 
     out_dir = abs_path(config["out-dir"])
-    out_dir.mkdir(parents=True, exists_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     model, max_rounds, K = config["model"], int(config["rounds"]), int(config["K"])
 
@@ -375,7 +375,7 @@ def main(grid: Grid, context:Context) -> None:
     done = set()
     if runs_f.exists():
         r = pd.read_csv(runs_f)
-        done = set(zip(r["particion"], r["model"], r["sistema"], r["estrategia"], r["presupuesto_frac"].round(4), r["costo_fijo"].round(4)))
+        done = set(zip(r["particion"], r["modelo"], r["sistema"], r["estrategia"], r["presupuesto_frac"].round(4), r["costo_fijo"].round(4)))
 
     variants = config.get("variants", "base")
     combos = [(b, f) for b in BUDGET_FRACTIONS for f in FIXED_COST_SHARES]

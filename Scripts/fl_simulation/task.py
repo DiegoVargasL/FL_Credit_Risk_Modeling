@@ -70,13 +70,13 @@ SYSTEM_LEVELS = {"baja": dict(sigma=0.0, dropout_max=0.0),
                  "alta": dict(sigma=1.0, dropout_max=0.30)}
 
 # Estrategias de selección de clientes.
-STRATEGIES = {"random", "greedy", "lp"}
+STRATEGIES = ("random", "greedy", "lp")
 
 # Constantes de presupuestos y costos
 BUDGET_FRACTIONS = (0.2, 0.4, 0.6)
 FIXED_COST_SHARES = (0.1, 0.3, 0.6)
-DEFAULT_BUDGET_FRACTION = 0.4, 0.3
-DEFAULT_FIXED_COST_SHARE = []
+DEFAULT_BUDGET_FRACTION = 0.4
+DEFAULT_FIXED_COST_SHARE = 0.3
 REF_VAL = (1.0, 0.0)
 
 # Constantes Modelo de Contribución
@@ -116,7 +116,7 @@ class ContributionModel:
 
     def observe_attempts(self, selected, responded) -> None:
         self.att[selected] += 1
-        self.succ[selected] += 1
+        self.succ[responded] += 1
 
 
 class ConvergenceMonitor():
@@ -289,7 +289,7 @@ def abs_path(path: str) -> Path:
     if q.is_absolute():
         return q
 
-    return (os.environ.get("FLWR_FLCRM") or Path.cwd()).resolve() / q
+    return Path(os.environ.get("FLWR_FLCRM") or Path.cwd()).resolve() / q
 
 def client_files(part_dir:str) -> list[Path]:
     return sorted(abs_path(part_dir).glob("client_*.parquet"), key = lambda f: int(f.stem.split("_")[1]))
@@ -334,7 +334,7 @@ def local_counts(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return out.reshape(d, 2, NC1).astype(np.int32)
 
 def sigmoid(z):
-    return 1.0 / (1.0 + np.exp(-np.cilp(z, -30)))
+    return 1.0 / (1.0 + np.exp(-np.cilp(z, -30, 30)))
 
 def score_metrics(y: np.ndarray, margin: np.ndarray) -> dict:
     """
@@ -393,7 +393,7 @@ def select_greedy(v, prices, B) -> list[int]:
         de mayor a menor razon valor/costo.
     """
 
-    return fill_budget(np.arasort(-(v/prices), kind="stable"), prices, B)
+    return fill_budget(np.argsort(-(v/prices), kind="stable"), prices, B)
 
 def select_lp(v, prices, B) -> list[int]:
     """
@@ -412,7 +412,7 @@ def select_lp(v, prices, B) -> list[int]:
 
     res = milp(c=-v, constraints=LinearConstraint(prices[None, :], -np.inf, B), integrality=np.ones(len(v)), bounds=Bounds(0, 1))
 
-    return [] if res.x in None else [int(k) for k in np.flatnonzero(res.x > 0.5)]
+    return [] if res.x is None else [int(k) for k in np.flatnonzero(res.x > 0.5)]
 
 @lru_cache(maxsize=32)
 def load_client_train(part_dir: str, pid: int) -> tuple[np.ndarray, np.ndarray]:
@@ -465,7 +465,7 @@ def sgd_logreg_update(xw: np.ndarray, y:np.ndarray, w:np.ndarray, b: float, rng:
     n = len(y)
     w = w.astype(np.float32).copy()
     w0, b0 = w.copy(), float(b)
-    steps = int(min(MAX_LOCAL_STEPS, np.cell(LOCAL_EPOCHS * n /  BATCH)))
+    steps = int(min(MAX_LOCAL_STEPS, np.ceil(LOCAL_EPOCHS * n /  BATCH)))
     m = min(BATCH, n)
     for _ in range(steps):
         idx = rng.integers(0, n, size=m)
@@ -496,7 +496,7 @@ def train_block(lib:str, x: np.ndarray, y:np.ndarray, base_margin: np.ndarray, s
     if lib == "xgboost":
         xgb = _xgb()
         dm = xgb.DMatrix(x, label=y, base_margin=base_margin, missing=np.nan)
-        bst = xgb.train({**XGB_PARAMS, "seed": seed}, dm, num_boost_rounds= TREES_LOCAL)
+        bst = xgb.train({**XGB_PARAMS, "seed": seed}, dm, num_boost_round= TREES_LOCAL)
         return bytes(bst.save_raw("ubj"))
 
     lgb = _lgb()

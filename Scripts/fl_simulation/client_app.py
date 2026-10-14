@@ -55,7 +55,11 @@ def train(msg: Message, context: Context) -> Message:
     weights, blobs = arrays[0], [a.tobytes() for a in arrays[1:]]
     start, exp = int(config["start"]), config["exp-id"]
     if start > 0:
-        sync = dict(context.satte["sync"]) if "sync" in context.state else {}
+        sync = dict(context.state["sync"]) if "sync" in context.state else {}
+
+        if sync.get("exp-id") != exp or int(sync.get("nb", -1)) != start:
+            raise RuntimeError(f"cliente {pid}: caché de margen desincronizada ({sync} vs start={start}, exp={exp})")
+
         base = context.state["margin"].to_numpy_ndarrays()[0].copy()
 
     else:

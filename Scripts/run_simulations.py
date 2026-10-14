@@ -21,7 +21,6 @@ LEVEL_NAMES = {
 
 MODELS = ("woe_logreg", "lightgbm", "xgboost")
 MAX_ROUNDS = 200
-RUNS_PER_PARTITION_MODEL = 10
 HERE = Path(__file__).resolve().parent
 
 PASSES = {"base": 10, "extra": 72}
@@ -35,7 +34,7 @@ def summarize(out_dir: Path) -> None:
     s = (runs.groupby(["modelo", "K", "heterogeneidad_datos", "sistema", "estrategia", "presupuesto_frac", "costo_fijo"])
          .agg(rondas_conv = ("rondas_conv", "mean"), 
               rondas_conv_std = ("rondas_conv", "std"),
-              prop_convergio = ("prop_convergio", "mean"),
+              convergio = ("convergio", "mean"),
               gasto_hasta_conv=("gasto_hasta_conv", "mean"), 
               auc_conv=("auc_conv", "mean"), 
               auc_conv_std=("auc_conv", "std"),
@@ -62,7 +61,7 @@ def done_rows(runs_f: Path, pid: str, model:str, variants: str) -> int:
     base = np.isclose(r["presupuesto_frac"], BASE_B) & np.isclose(r["costo_fijo"], BASE_F)
     is_all = r["estrategia"] == "all"
 
-    return int((m & (is_all | base)).sum()) if variants == "base" else ((m & ~is_all & ~base).sum())
+    return int((m & (is_all | base)).sum()) if variants == "base" else int((m & ~is_all & ~base).sum())
 
 
 def main() -> None:
