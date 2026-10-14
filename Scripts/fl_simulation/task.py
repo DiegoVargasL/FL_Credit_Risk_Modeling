@@ -334,7 +334,7 @@ def local_counts(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return out.reshape(d, 2, NC1).astype(np.int32)
 
 def sigmoid(z):
-    return 1.0 / (1.0 + np.exp(-np.cilp(z, -30, 30)))
+    return 1.0 / (1.0 + np.exp(-np.clip(z, -30, 30)))
 
 def score_metrics(y: np.ndarray, margin: np.ndarray) -> dict:
     """

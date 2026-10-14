@@ -122,6 +122,9 @@ def main() -> None:
                 env = {**os.environ, "FLWR_FLCRM": str(paths.root)}
                 if subprocess.run(cmd, cwd=paths.root, env=env).returncode != 0:
                     sys.exit(f"La ejecución fallo: {variants} {d.name} {model}")
+
+                if done_rows(runs_f, f"K{K}_{d.name}", model, variants) < expected:
+                    sys.exit(f"La simulación no registró todos los resultados: {variants} {d.name} {model}")
         
         summarize(out_dir)
     

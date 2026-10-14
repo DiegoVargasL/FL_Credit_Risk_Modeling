@@ -114,7 +114,7 @@ class TreeServer:
                 self.margins[nm] += wi * predict_block(self.lib, blob, x)
 
             imp = gain_importance(self.lib, blob, self.d)
-            vecs.append(imp / imp.sum() if imp.sum > 0 else imp)
+            vecs.append(imp / imp.sum() if imp.sum() > 0 else imp)
 
         return vecs
 
@@ -138,8 +138,9 @@ def central_baseline(model: str, config: dict, xtest:np.ndarray, ytest: np.ndarr
     pid = f"K{int(config['K'])}_{Path(config['part-dir']).name}"
     if f.exists():
         df = pd.read_csv(f)
-        if ((df["modelo"] == model) & (df["particion"] == pid)).any():
-            return float(df.loc[df["modelo"] == model & df["particion"] == pid, "auc"].iloc[0])
+        m = (df["modelo"] == model) & (df["particion"] == pid)
+        if m.any():
+            return float(df.loc[m, "roc_auc"].iloc[0])
 
     xtr, ytr = load_pooled(config["part-dir"], "local_split", "train")
     params = json.loads(Path(config["model-params"]).read_text(encoding="utf-8"))
@@ -315,7 +316,7 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
         rows.append({"ronda": t,
                     **metrics,
                     "auc_valid": metrics_va["roc_auc"],
-                    "loglos_valid": metrics_va["logloss"],
+                    "logloss_valid": metrics_va["logloss"],
                     "gasto": float(prices[selected].sum()) if strategy != "all" else float(len(selected)),
                     "presupuesto": float(B),
                     "n_seleccionados": len(selected),
