@@ -1,0 +1,12 @@
+{
+    "lightgbm":{
+        "n_estimators": 499
+    },
+    "xgboost":{
+        "n_estimators": 854
+    },
+    "woe_logreg":{
+        "penalty": "l2",
+        "C": 1.0
+    }
+}

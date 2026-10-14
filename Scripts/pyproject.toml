@@ -1,0 +1,51 @@
+# Es la manera de empaquetar la app
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Nombre y especificaciones del proyecto
+[project]
+name = "FLCreditRiskModeling"
+version = "1.0.0"
+description = "Aprendizaje Federado bajo restricciones presupuestarias (Flower): woe_logreg, lightgbm y xgboost con selección random / greedy / LP"
+license = "Apache-2.0"
+dependencies = [
+    "flwr[simulation]>=1.39.0",
+    "xgboost>=2.0",
+    "lightgbm>=4.0",
+    "scikit-learn>=1.3",
+    "scipy>=1.9",
+    "pandas",
+    "numpy",
+    "pyarrow",
+]
+
+# Carpeta que se empaqueta
+[tool.hatch.build.targets.wheel]
+packages = ["fl_simulation"]
+
+# Metadatos de la app
+[tool.flwr.app]
+publisher = "Diego Vargas"
+
+# Se conecta el codigo con Flower
+[tool.flwr.app.components]
+serverapp = "fl_simulation.server_app:app"
+clientapp = "fl_simulation.client_app:app"
+
+# Parametros de la simulación
+# Estos valores los sobreescribe run_simulation.py pero necesitan
+# estar declarados en este archivo de configuración.
+[tool.flwr.app.config]
+part-dir = "data/federated/K10/S0_seed42"
+out-dir = "reports"
+model = "xgboost"
+K = 10
+scenario = "S0"
+level = "nula"
+seed = 42
+rounds = 200
+model-params = ""
+variants = "base"
+
+
