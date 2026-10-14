@@ -117,7 +117,7 @@ def main() -> None:
                                         model-params='{params}'
                                     """)
 
-                cmd = [flwr, "run", str(HERE), "--stream", "--run-config", run_configuration, "--federation-config", f"num-supernodes={K} client-resources-num-cpus=1"]
+                cmd = [flwr, "run", str(HERE), "--stream", "--run-config", run_configuration, "--federation-config", f"num-supernodes={K} client-resources-num-cpus=1 init-args-num-cpus=2"]
                 print(f"[{step}/{total}] {variants} K={K} {d.name} {model}")
                 env = {**os.environ, "FLWR_FLCRM": str(paths.root)}
                 if subprocess.run(cmd, cwd=paths.root, env=env).returncode != 0:
