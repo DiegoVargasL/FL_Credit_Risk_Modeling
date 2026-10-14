@@ -9,7 +9,7 @@ import pandas as pd
 from flwr.serverapp import ServerApp, Grid
 from flwr.app import ArrayRecord, ConfigRecord, Context, Message, MessageType, RecordDict
 
-from task import (SYSTEM_LEVELS, STRATEGIES, BUDGET_FRACTIONS, FIXED_COST_SHARES, DEFAULT_BUDGET_FRACTION, DEFAULT_FIXED_COST_SHARE, REF_VAL,
+from fl_simulation.task import (SYSTEM_LEVELS, STRATEGIES, BUDGET_FRACTIONS, FIXED_COST_SHARES, DEFAULT_BUDGET_FRACTION, DEFAULT_FIXED_COST_SHARE, REF_VAL,
                 ContributionModel, ConvergenceMonitor, empty_tables, build_woe, woe_features, predict_block, gain_importance, abs_path, load_pooled,
                 local_counts, score_metrics, make_prices, feature_names, select_random, select_greedy, select_lp)
 

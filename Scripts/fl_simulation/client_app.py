@@ -6,7 +6,7 @@ import numpy as np
 from flwr.app import Message, Context, RecordDict, MetricRecord, ArrayRecord, ConfigRecord
 from flwr.clientapp import ClientApp
 
-from task import (load_client_train, infra_factor, drop_prob, drop_draw, local_counts, woe_features,
+from fl_simulation.task import (load_client_train, infra_factor, drop_prob, drop_draw, local_counts, woe_features,
                   sgd_logreg_update, train_block, ensemble_margin)
 
 
