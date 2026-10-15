@@ -25,15 +25,13 @@
         "K5_S2_b0.5_seed44",
         "K10_S2_b0.5_seed44",
         "K5_S1_b1.0_seed42",
-        "K10_S1_b0.5_seed43",
         "K10_S1_b0.5_seed44",
         "K20_S4_a0.5_b1.0_seed42",
-        "K20_S4_a0.5_b1.0_seed43",
-        "K20_S4_a0.5_b1.0_seed44"
+        "K20_S4_a0.5_b1.0_seed43"
       ]
     },
     "m2": {
-      "processes": 1,
+      "processes": 2,
       "cpus_per_process": 4,
       "partitions": [
         "K5_S1_b0.5_seed42",
@@ -42,7 +40,11 @@
         "K5_S0_seed44",
         "K10_S0_seed44",
         "K20_S2_b0.5_seed43",
-        "K5_S1_b1.0_seed43"
+        "K5_S1_b1.0_seed43",
+        "K5_S1_b1.0_seed44",
+        "K10_S1_b0.5_seed42",
+        "K10_S1_b0.5_seed43",
+        "K20_S4_a0.5_b1.0_seed44"
       ]
     },
     "m3": {
@@ -53,8 +55,7 @@
         "K10_S4_a0.5_b1.0_seed43",
         "K20_S2_b0.5_seed42",
         "K5_S4_a0.5_b1.0_seed44",
-        "K20_S1_b1.0_seed44",
-        "K5_S1_b1.0_seed44"
+        "K20_S1_b1.0_seed44"
       ]
     },
     "m4": {
@@ -65,8 +66,7 @@
         "K10_S2_b0.5_seed42",
         "K20_S0_seed43",
         "K10_S4_a0.5_b1.0_seed44",
-        "K20_S1_b0.5_seed44",
-        "K10_S1_b0.5_seed42"
+        "K20_S1_b0.5_seed44"
       ]
     }
   }
