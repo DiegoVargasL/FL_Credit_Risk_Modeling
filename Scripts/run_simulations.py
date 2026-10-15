@@ -5,6 +5,7 @@ import sys
 import subprocess
 import argparse
 import shutil
+import time
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -64,17 +65,31 @@ def done_rows(runs_f: Path, pid: str, model:str, variants: str) -> int:
     return int((m & (is_all | base)).sum()) if variants == "base" else int((m & ~is_all & ~base).sum())
 
 
+def find_flwr() -> str:
+    folder = Path(sys.executable).parent
+    for f in (folder / "flwr", folder / "flwr.exe"):
+        if f.exists():
+            return str(f)
+    return shutil.which("flwr") or "flwr"
+
 def main() -> None:
     setup_console()
 
     parser = argparse.ArgumentParser(description="Simulaciones de FL bajo presupuesto con Flower")
     add_sample_arg(parser)
+    parser.add_argument("--partitions", default=None,
+                        help="Lista separada por comas (ej. K5_S0_seed42). Sin esto, corre todas.")
+    parser.add_argument("--cpus", type=int, default=2,
+                        help="CPUs por simulación (init-args-num-cpus).")
+    parser.add_argument("--out", default=None,
+                        help="Carpeta de resultados. Por defecto reports/ (o data/sample/reports).")
     args = parser.parse_args()
 
     paths = get_paths(args.sample)
     paths.make()
 
-    out_dir = paths.reports
+    out_dir = Path(args.out).resolve() if args.out else paths.reports
+    out_dir.mkdir(parents=True, exist_ok=True)
     part_dir = paths.federated
     params = paths.root / "model_params.json"
 
@@ -87,7 +102,11 @@ def main() -> None:
         if kdir.is_dir() and kdir.name[1:].isdigit():
             parts += [(int(kdir.name[1:]), d) for d in sorted(kdir.iterdir()) if d.is_dir() and (d / "_PROCESSED").exists()]
 
-    flwr = shutil.which("flwr")
+    if args.partitions:
+        wanted = set(args.partitions.split(","))
+        parts = [(K, d) for K, d in parts if f"K{K}_{d.name}" in wanted]
+
+    flwr = find_flwr()
     runs_f = out_dir / "runs.csv"
 
     total = len(parts) * len(MODELS) * len(PASSES)
@@ -117,7 +136,7 @@ def main() -> None:
                                         model-params='{params}'
                                     """)
 
-                cmd = [flwr, "run", str(HERE), "--stream", "--run-config", run_configuration, "--federation-config", f"num-supernodes={K} client-resources-num-cpus=1 init-args-num-cpus=2"]
+                cmd = [flwr, "run", str(HERE), "--stream", "--run-config", run_configuration, "--federation-config", f"num-supernodes={K} client-resources-num-cpus=1 init-args-num-cpus={args.cpus}"]
                 print(f"[{step}/{total}] {variants} K={K} {d.name} {model}")
                 env = {**os.environ, "FLWR_FLCRM": str(paths.root)}
                 if subprocess.run(cmd, cwd=paths.root, env=env).returncode != 0:

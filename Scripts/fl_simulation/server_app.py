@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import zlib
 import json
+import joblib
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import time
 
 from flwr.serverapp import ServerApp, Grid
 from flwr.app import ArrayRecord, ConfigRecord, Context, Message, MessageType, RecordDict
@@ -222,7 +224,7 @@ def query_nodes(grid: Grid, config: dict, system: str) -> list[dict]:
             raise RuntimeError(f"Un cliente fallo en el query: {r.error}")
 
         metrics = dict(r.content["metrics"])
-        out.append({"node_id": r.metadata.src_node_id, "pid": int(metrics["pid"]), "n": float(metrics["n"]), "m": float(metrics["m"])})
+        out.append({"node_id": r.metadata.src_node_id, "pid": int(metrics["pid"]), "n": float(metrics["n"]), "m": float(metrics["m"]), "p_drop": metrics["p_drop"], "tasa_impago": metrics["tasa_impago"]})
 
     return sorted(out, key=lambda x: x["pid"])
 
@@ -248,8 +250,22 @@ def gini(x: np.ndarray) -> float:
 
     return float((2 * (k*x).sum() / (len(x) * x.sum())) - (len(x)+1) / len(x))
 
+def snapshot(srv) -> dict:
+    if isinstance(srv, WoeServer):
+        return {"coef": srv.coef.copy(), "tab": srv.tab}
+    return {"n_bloques": len(srv.blobs)}
+
+def export_model(srv, snap:dict) -> dict:
+    if isinstance(srv, WoeServer):
+        t = snap["tab"]
+        return {"modelo": "woe_logreg", "coef": snap["coef"], "sel": t["sel"], "c2b": t["c2b"], "woe": t["woe"], "d": srv.d}
+
+    n = snap["n_bloques"]
+    return {"modelo": srv.lib, "pesos": srv.weights[:n], "bloques": srv.blobs[:n], "d": srv.d}
+
 
 def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, strategy: str, xtest: np.ndarray, ytest: np.ndarray, xva: np.ndarray, yva: np.ndarray, central_auc: float, max_rounds:int, budget_frac: float, fixed_share: float) -> tuple[list[dict], dict]:
+    t0 = time.perf_counter()
     K = len(nodes)
     seed, model = int(config["seed"]), config["model"]
     n = np.array([x["n"] for x in nodes])
@@ -260,19 +276,24 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
     mon = ConvergenceMonitor()
     sel_rng = np.random.default_rng(np.random.SeedSequence([seed, K, 8001, zlib.crc32(f"{system}|{model}".encode())]))
 
-    rows = []
+    rows, vals = [], []
     stop = False
+    snap = None
     for t in range(1, max_rounds + 1):
         cm.start_round()
         srv.start_round()
+        comp = cm.components(t)
         if strategy == "all":
             selected = list(range(K))
         elif strategy == "random":
             selected = select_random(prices, B, sel_rng)
         elif strategy == "greedy":
-            selected = select_greedy(cm.values(t), prices, B)
+            selected = select_greedy(comp["v"], prices, B)
         else:
-            selected = select_lp(cm.values(t), prices, B)
+            selected = select_lp(comp["v"], prices, B)
+
+        sel_set = set(selected)
+        vals += [{"ronda": t, "cliente": k, "seleccionado": int(k in sel_set), **{c: comp[c][k] for c in list(comp.keys())}} for k in range(K)]
 
         msgs = []
         for k in selected:
@@ -301,6 +322,7 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
                 replies[node2k[r.metadata.src_node_id]] = r
 
         responded = sorted(replies)
+        dropped = sorted(set(selected) - set(replies))
         cm.observe_attempts(selected, responded)
 
         if responded:
@@ -321,10 +343,13 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
                     "presupuesto": float(B),
                     "n_seleccionados": len(selected),
                     "n_respondieron": len(responded),
-                    "seleccionados": "|".join(map(str, selected))})
+                    "seleccionados": "|".join(map(str, selected)),
+                    "abandonaron": "|".join(map(str, dropped))})
 
-        if mon.update(t, metrics_va["roc_auc"]):
-            stop = True
+        stop = mon.update(t, metrics_va["roc_auc"])
+        if mon.t_star == t:
+            snap = snapshot(srv)
+        if stop:
             break
 
     counts = np.zeros(K)
@@ -349,9 +374,43 @@ def run_simulation(grid: Grid, config: dict, nodes: list[dict], system:str, stra
                "presupuesto_ronda": float(B),
                "prom_respondieron": float(np.mean([r["n_respondieron"] for r in rows])),
                "clientes_alcanzados": int((counts > 0).sum()), 
-               "gini_participacion": gini(counts)}
+               "gini_participacion": gini(counts),
+               "tiempo": time.perf_counter() - t0}
 
-    return rows, summary
+    final = snapshot(srv)
+    conv = snap if snap is not None else final
+
+    model = {"final": export_model(srv, final),
+               "convergencia": export_model(srv, conv),
+               "t_star": int(mon.t_star)}
+    
+    return rows, vals, summary, model
+
+
+def save_clients(out_dir: Path, part:str, system:str, seed:int, nodes: list[dict]) -> None:
+    clients_f = out_dir / "clients.csv"
+    if clients_f.exists():
+        prev = pd.read_csv(clients_f, usecols=["particion", "sistema"])
+        if ((prev["particion"] == part) & (prev["sistema"] == system)).any():
+            return
+
+    n = np.array([x["n"] for x in nodes])
+    m = np.array([x["m"] for x in nodes])
+    df = pd.DataFrame({
+        "particion": part,
+        "sistema": system,
+        "semilla": seed,
+        "pid": [x["pid"] for x in nodes],
+        "n": n,
+        "m": m,
+        "p_drop": [x["p_drop"] for x in nodes],
+        "tasa_impago": [x["tasa_impago"] for x in nodes],
+    })
+
+    for F in FIXED_COST_SHARES:
+        df[f"c_{F}"] = make_prices(n, m, F)
+
+    df.to_csv(clients_f, mode="a", header=not clients_f.exists(), index=False)
 
 
 def append_csv(path: Path, df: pd.DataFrame) -> None:
@@ -371,8 +430,11 @@ def main(grid: Grid, context:Context) -> None:
 
     part = f"K{int(config['K'])}_{Path(config['part-dir']).name}"
 
-    runs_f, rounds_f = out_dir / "runs.csv", out_dir / "rounds.csv"
+    runs_f, rounds_f, vals_f = out_dir / "runs.csv", out_dir / "rounds.csv", out_dir / "valores.csv"
     
+    models_dir = out_dir / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
     done = set()
     if runs_f.exists():
         r = pd.read_csv(runs_f)
@@ -411,17 +473,21 @@ def main(grid: Grid, context:Context) -> None:
 
         if qsys not in nodes_by_system:
             nodes_by_system[qsys] = query_nodes(grid, config, qsys)
+            save_clients(out_dir, part, qsys, int(config["seed"]), nodes_by_system[qsys])
 
         nodes = nodes_by_system[qsys]
         if system == "sin_sistema" and not nodes_by_system.get("_PRINTED"):
             print(f"{int(min(x['n'] for x in nodes))} .. {int(max(x['n'] for x in nodes))}")
             nodes_by_system["_PRINTED"] = True
 
-        rows, summ = run_simulation(grid, config, nodes, system, strategy, xtest, ytest, xva, yva, central_auc, max_rounds, b_frac, f_share)
+        rows, vals, summ, modelo = run_simulation(grid, config, nodes, system, strategy, xtest, ytest, xva, yva, central_auc, max_rounds, b_frac, f_share)
 
         var = {"presupuesto_frac": b_frac, "costo_fijo": f_share}
 
+        joblib.dump(modelo, models_dir / f"{part}_{model}_{system}_{strategy}_b{b_frac}_F{f_share}.joblib", compress=3)
+
         append_csv(rounds_f, pd.DataFrame([{**meta, "sistema": system, "estrategia": strategy, **var, **r} for r in rows]))
+        append_csv(vals_f, pd.DataFrame([{**meta, "sistema": system, "estrategia": strategy, **var, **v} for v in vals]))
         append_csv(runs_f, pd.DataFrame([{**meta, "sistema": system, "estrategia": strategy, **var, **summ}]))
 
         print(f"""{system:<12} {strategy:<7} b={b_frac:<4} F={f_share:<4} AUC={summ['auc_final']:.4f} ({summ['ratio_vs_central']:.1%} del central)

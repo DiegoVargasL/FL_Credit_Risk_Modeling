@@ -23,7 +23,7 @@ def query(msg: Message, context:Context) -> Message:
     pid = int(context.node_config["partition-id"])
     x, y = load_client_train(config["part-dir"], pid)
 
-    return _reply(msg, {"n": float(len(y)), "pid": float(pid), "m": infra_factor(config["system"], int(config["seed"]), pid)})
+    return _reply(msg, {"n": float(len(y)), "pid": float(pid), "m": infra_factor(config["system"], int(config["seed"]), pid), "p_drop": drop_prob(config["system"], int(config["seed"]), pid), "tasa_impago": float(y.mean())})
 
 @app.train()
 def train(msg: Message, context: Context) -> Message:

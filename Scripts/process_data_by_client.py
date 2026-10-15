@@ -745,12 +745,18 @@ def main():
 
     parser = argparse.ArgumentParser(description="Procesamiento de datos por cliente.")
     add_sample_arg(parser)
+    parser.add_argument("--partitions", default=None,
+                        help="Lista separada por comas. Sin esto, procesa todas las completas.")
     args = parser.parse_args()
 
     paths = get_paths(args.sample)
     paths.make()
     part_dir, out_root = paths.partitioned, paths.federated
     parts = list_partitions(part_dir)
+
+    if args.partitions:
+        wanted = set(args.partitions.split(","))
+        parts = [(K, d) for K, d in parts if f"K{K}_{d.name}" in wanted]
 
     if not parts:
         raise SystemExit(f"No hay particiones compoletas en {part_dir}. Ejecuta primero el script partition_data.py.")

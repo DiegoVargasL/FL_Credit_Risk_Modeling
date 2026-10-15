@@ -362,6 +362,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="Partición de datos entre clientes federados")
     add_sample_arg(parser)
+    parser.add_argument("--partitions", default=None,
+                        help="Lista separada por comas (ej. K5_S0_seed42,K10_S0_seed42). Sin esto, genera todas.")
+    args = parser.parse_args()
+    wanted = set(args.partitions.split(",")) if args.partitions else None
     args = parser.parse_args()
     paths = get_paths(args.sample)
     paths.make()
@@ -379,7 +383,7 @@ def main():
             for seed in DEFAULT_SEEDS:
                 out_dir = out_root / f"K{K}" / f"{sid}_seed{seed}"
                 plan.append((K, sid, seed, out_dir, (out_dir / "_COMPLETE").exists()))
-    pending = [p for p in plan if not p[4]]
+    pending = [p for p in plan if not p[4] and (wanted is None or f"K{p[0]}_{p[3].name}" in wanted)]
 
     # Verificar si hay suficiente espacio de almacenamiento para las particiones.
     per_partition = sum((data_dir / f).stat().st_size for f, _ in TABLES)
@@ -406,6 +410,10 @@ def main():
         tag = f"K={K:<3} {LEVEL_OF[sid]:<6} ({sid:<8}) semilla={seed}"
         row = {"K": K, "nivel": LEVEL_OF[sid], "escenario": sid, "semilla": seed, "path": str(out_dir.relative_to(out_root))}
         index_rows.append(row)
+
+        if wanted is not None and f"K{K}_{out_dir.name}" not in wanted:
+            continue
+
         if done:
             print(f"{tag}: ya completa, se omite.")
             continue

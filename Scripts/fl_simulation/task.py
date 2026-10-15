@@ -108,11 +108,14 @@ class ContributionModel:
         self.S1[K] += y_obs
         self.S0[K] += 1.0
 
-    def values(self, t:int) -> np.ndarray:
+    def components(self, t:int) -> dict:
         q = (Q_PRIOR_WEIGHT * Q_PRIOR + self.S1) / (Q_PRIOR_WEIGHT + self.S0)
         bonus = UCB_C * np.sqrt(2.0 * np.log(1.0 + t) / (self.S0 + 1.0))
         r = (self.succ + REL_A) / (self.att + REL_A + REL_B)
-        return self.g * r * np.minimum(1.0, q+bonus)
+        return {"g": self.g, "r": r, "q_base": q, "bono": bonus, "q":np.minimum(1.0, q+bonus), "v": self.g * r * np.minimum(1.0, q+bonus)}
+
+    def values(self, t:int) -> np.ndarray:
+        return self.components(t)["v"]
 
     def observe_attempts(self, selected, responded) -> None:
         self.att[selected] += 1
