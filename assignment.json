@@ -32,7 +32,7 @@
     },
     "m2": {
       "processes": 2,
-      "cpus_per_process": 4,
+      "cpus_per_process": 2,
       "partitions": [
         "K5_S1_b0.5_seed42",
         "K10_S1_b1.0_seed42",
@@ -49,7 +49,7 @@
     },
     "m3": {
       "processes": 1,
-      "cpus_per_process": 4,
+      "cpus_per_process": 2,
       "partitions": [
         "K5_S2_b0.5_seed42",
         "K10_S4_a0.5_b1.0_seed43",
@@ -60,7 +60,7 @@
     },
     "m4": {
       "processes": 1,
-      "cpus_per_process": 4,
+      "cpus_per_process": 2,
       "partitions": [
         "K5_S4_a0.5_b1.0_seed43",
         "K10_S2_b0.5_seed42",
