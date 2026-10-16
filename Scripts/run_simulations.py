@@ -24,7 +24,8 @@ MODELS = ("woe_logreg", "lightgbm", "xgboost")
 MAX_ROUNDS = 200
 HERE = Path(__file__).resolve().parent
 
-PASSES = {"base": 10, "extra": 72}
+#PASSES = {"base": 10, "extra": 72}
+PASSES = {"base": 10}
 BASE_B, BASE_F = 0.4, 0.3
 
 def summarize(out_dir: Path) -> None:
